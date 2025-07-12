@@ -1,4 +1,4 @@
-@Library('Shared@main') _
+@Library('Shared') _
 pipeline {
     agent {label 'Node'}
     
@@ -97,11 +97,11 @@ pipeline {
             steps{
                 script{
                         dir('backend'){
-                            docker_buildnew("wanderlust-backend-beta","${params.BACKEND_DOCKER_TAG}", "ankitgupta1234")
+                            docker_build("wanderlust-backend-beta","${params.BACKEND_DOCKER_TAG}", "ankitgupta1234")
                         }
                     
                         dir('frontend'){
-                            docker_buildnew("wanderlust-frontend-beta","${params.FRONTEND_DOCKER_TAG}", "ankitgupta1234")
+                            docker_build("wanderlust-frontend-beta","${params.FRONTEND_DOCKER_TAG}", "ankitgupta1234")
                         }
                 }
             }
