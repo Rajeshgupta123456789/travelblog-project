@@ -1,0 +1,241 @@
+name: travelblog-root
+on:
+  workflow_dispatch:
+    inputs:
+      FRONTEND_DOCKER_TAG:
+        required: false
+        description: Setting docker image for latest push
+        default: ''
+      BACKEND_DOCKER_TAG:
+        required: false
+        description: Setting docker image for latest push
+        default: ''
+env:
+#   # This item has no matching transformer
+#   SONAR_HOME: ${"Sonar"}
+jobs:
+  Validate_Parameters:
+    name: Validate Parameters
+    runs-on:
+      - self-hosted
+      - Node
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             if (params.FRONTEND_DOCKER_TAG == '' || params.BACKEND_DOCKER_TAG == '') {
+#                                     error("FRONTEND_DOCKER_TAG and BACKEND_DOCKER_TAG must be provided.")
+#                                 }
+  Workspace_cleanup:
+    name: Workspace cleanup
+    runs-on:
+      - self-hosted
+      - Node
+    needs: Validate_Parameters
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: cleanWs()
+  Git_Code_Checkout:
+    name: "Git: Code Checkout"
+    runs-on:
+      - self-hosted
+      - Node
+    needs: Workspace_cleanup
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: code_checkout("https://github.com/Rajeshgupta123456789/travelblog-project.git","main")
+  Trivy_Filesystem_scan:
+    name: "Trivy: Filesystem scan"
+    runs-on:
+      - self-hosted
+      - Node
+    needs: Git_Code_Checkout
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: trivy_scan()
+  OWASP_Dependency_check:
+    name: "OWASP: Dependency check"
+    runs-on:
+      - self-hosted
+      - Node
+    needs: Trivy_Filesystem_scan
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: owasp_dependency()
+  SonarQube_Code_Analysis:
+    name: "SonarQube: Code Analysis"
+    runs-on:
+      - self-hosted
+      - Node
+    needs: OWASP_Dependency_check
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: sonarqube_analysis("Sonar","wanderlust","wanderlust")
+  SonarQube_Code_Quality_Gates:
+    name: "SonarQube: Code Quality Gates"
+    runs-on:
+      - self-hosted
+      - Node
+    needs: SonarQube_Code_Analysis
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: sonarqube_code_quality()
+  Exporting_environment_variables_Backend_env_setup:
+    name: Exporting environment variables-Backend env setup
+    runs-on:
+      - self-hosted
+      - Node
+    needs: SonarQube_Code_Quality_Gates
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             dir("Automations"){
+#                                             sh "bash updatebackendnew.sh"
+#                                         }
+  Exporting_environment_variables_Frontend_env_setup:
+    name: Exporting environment variables-Frontend env setup
+    runs-on:
+      - self-hosted
+      - Node
+    needs: SonarQube_Code_Quality_Gates
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: |-
+#             dir("Automations"){
+#                                             sh "bash updatefrontendnew.sh"
+#                                         }
+  Docker_Build_Images:
+    name: "Docker: Build Images"
+    runs-on:
+      - self-hosted
+      - Node
+    needs:
+    - Exporting_environment_variables_Backend_env_setup
+    - Exporting_environment_variables_Frontend_env_setup
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "dir('backend'){\n                            docker_build(\"wanderlust-backend-beta\",\"${{ inputs.BACKEND_DOCKER_TAG }}\", \"ankitgupta1234\")\n                        }\n                    \n                        dir('frontend'){\n                            docker_build(\"wanderlust-frontend-beta\",\"${{ inputs.FRONTEND_DOCKER_TAG }}\", \"ankitgupta1234\")\n                        }"
+  Docker_Push_to_DockerHub:
+    name: "Docker: Push to DockerHub"
+    runs-on:
+      - self-hosted
+      - Node
+    needs: Docker_Build_Images
+    steps:
+    - name: checkout
+      uses: actions/checkout@v4.1.0
+#     # 'script' was not transformed because there is no suitable equivalent in GitHub Actions
+#     - name: script
+#       arguments:
+#       - key: scriptBlock
+#         value:
+#           isLiteral: true
+#           value: "docker_push(\"wanderlust-backend-beta\",\"${{ inputs.BACKEND_DOCKER_TAG }}\", \"ankitgupta1234\") \n                    docker_push(\"wanderlust-frontend-beta\",\"${{ inputs.FRONTEND_DOCKER_TAG }}\", \"ankitgupta1234\")"
+  Post-Build:
+    if: always()
+    name: Post Build
+    runs-on:
+      - self-hosted
+      - Node
+    needs:
+    - Validate_Parameters
+    - Workspace_cleanup
+    - Git_Code_Checkout
+    - Trivy_Filesystem_scan
+    - OWASP_Dependency_check
+    - SonarQube_Code_Analysis
+    - SonarQube_Code_Quality_Gates
+    - Exporting_environment_variables_Backend_env_setup
+    - Exporting_environment_variables_Frontend_env_setup
+    - Docker_Build_Images
+    - Docker_Push_to_DockerHub
+    steps:
+    - name: snapshot post build workflow status
+      run: echo "success=${{ contains(needs.*.result,'success') && !contains(needs.*.result,'cancelled') && !contains(needs.*.result,'failure') }}" >> $GITHUB_OUTPUT
+      id: post_build
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4.1.0
+      if: steps.post_build.outputs.success == 'true'
+      with:
+        path: "*.xml"
+#     # This action relies on the workflow 'Wanderlust-CD.yml' being present in this repository (change the repository parameter if the workflow is in a different repository).
+#     # Ensure that the workflow exists, has the workflow_dispatch trigger, and has matching input parameters.
+#     - name: Trigger workflow
+#       uses: octokit/request-action@v2.1.9
+#       env:
+#         GITHUB_TOKEN: "${{ secrets.WORKFLOW_TRIGGER_TOKEN }}"
+#       with:
+#         route: POST /repos/:repository/actions/workflows/:workflow_id/dispatches
+#         repository: "${{ github.repository }}"
+#         workflow_id: Wanderlust-CD.yml
+#         ref: "${{ github.ref }}"
+#       if: steps.post_build.outputs.success == 'true'
