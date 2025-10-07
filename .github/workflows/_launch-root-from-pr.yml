@@ -8,7 +8,8 @@ on:
 
 jobs:
   run-root:
-    uses: Rajeshgupta123456789/travelblog-project/.github/workflows/travelblog-root.yml@<PR_BRANCH_ROOT>
+    uses: Rajeshgupta123456789/travelblog-project/.github/workflows/travelblog-root.yml@convert-travelblog-root-to-actions-20251007-210831
+
     with:
       FRONTEND_DOCKER_TAG: ${{ inputs.FRONTEND_DOCKER_TAG }}
       BACKEND_DOCKER_TAG:  ${{ inputs.BACKEND_DOCKER_TAG }}
