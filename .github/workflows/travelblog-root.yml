@@ -1,0 +1,246 @@
+name: travelblog-root
+
+on:
+  workflow_dispatch:
+    inputs:
+      FRONTEND_DOCKER_TAG:
+        required: true
+        description: "Docker tag for frontend (e.g., 1.0.0)"
+      BACKEND_DOCKER_TAG:
+        required: true
+        description: "Docker tag for backend (e.g., 1.0.0)"
+  workflow_call:
+    inputs:
+      FRONTEND_DOCKER_TAG: { type: string, required: true }
+      BACKEND_DOCKER_TAG:  { type: string, required: true }
+    secrets:
+      SONAR_HOST_URL:      { required: false }
+      SONAR_TOKEN:         { required: false }
+      DOCKERHUB_USERNAME:  { required: false }
+      DOCKERHUB_TOKEN:     { required: false }
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  security-events: write   # for SARIF upload
+
+env:
+  # Registry + image names (adjust if different)
+  REGISTRY: docker.io
+  REGISTRY_NAMESPACE: ankitgupta1234
+  BACKEND_IMAGE_NAME: wanderlust-backend-beta
+  FRONTEND_IMAGE_NAME: wanderlust-frontend-beta
+
+  # Build contexts (adjust if your Dockerfiles are elsewhere)
+  BACKEND_CONTEXT: ./backend
+  FRONTEND_CONTEXT: ./frontend
+
+jobs:
+  Validate_Parameters:
+    name: Validate Parameters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ensure tags are provided
+        run: |
+          [ -n "${{ inputs.FRONTEND_DOCKER_TAG }}" ] || { echo "FRONTEND_DOCKER_TAG is required"; exit 1; }
+          [ -n "${{ inputs.BACKEND_DOCKER_TAG }}" ] || { echo "BACKEND_DOCKER_TAG is required"; exit 1; }
+
+  Workspace_cleanup:
+    name: Workspace cleanup
+    runs-on: ubuntu-latest
+    needs: Validate_Parameters
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean untracked files (like cleanWs())
+        run: |
+          git reset --hard
+          git clean -fdx
+
+  Git_Code_Checkout:
+    name: "Git: Code Checkout"
+    runs-on: ubuntu-latest
+    needs: Workspace_cleanup
+    steps:
+      - uses: actions/checkout@v4
+
+  Trivy_Filesystem_scan:
+    name: "Trivy: Filesystem scan"
+    runs-on: ubuntu-latest
+    needs: Git_Code_Checkout
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy filesystem scan (SARIF)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-fs.sarif
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+      - name: Store Trivy report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs
+          path: trivy-fs.sarif
+
+  OWASP_Dependency_check:
+    name: "OWASP: Dependency check"
+    runs-on: ubuntu-latest
+    needs: Trivy_Filesystem_scan
+    steps:
+      - uses: actions/checkout@v4
+      - name: OWASP Dependency-Check (XML + HTML)
+        uses: dependency-check/Dependency-Check_Action@v3.1.3
+        with:
+          project: travelblog
+          path: .
+          format: 'XML,HTML'
+          out: reports
+      - name: Upload OWASP reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-dep-check
+          path: reports
+
+  SonarQube_Code_Analysis:
+    name: "SonarQube: Code Analysis"
+    runs-on: ubuntu-latest
+    needs: OWASP_Dependency_check
+    steps:
+      - uses: actions/checkout@v4
+      # Self-hosted SonarQube (use SONAR_HOST_URL & SONAR_TOKEN secrets)
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=wanderlust
+            -Dsonar.projectName=wanderlust
+
+  SonarQube_Code_Quality_Gates:
+    name: "SonarQube: Code Quality Gates"
+    runs-on: ubuntu-latest
+    needs: SonarQube_Code_Analysis
+    steps:
+      - name: Wait for Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  Exporting_environment_variables_Backend_env_setup:
+    name: Export env vars - Backend
+    runs-on: ubuntu-latest
+    needs: SonarQube_Code_Quality_Gates
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Automations/updatebackendnew.sh (if present)
+        shell: bash
+        run: |
+          if [ -f "Automations/updatebackendnew.sh" ]; then
+            chmod +x Automations/updatebackendnew.sh
+            bash Automations/updatebackendnew.sh
+          else
+            echo "Automations/updatebackendnew.sh not found, skipping"
+          fi
+
+  Exporting_environment_variables_Frontend_env_setup:
+    name: Export env vars - Frontend
+    runs-on: ubuntu-latest
+    needs: SonarQube_Code_Quality_Gates
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Automations/updatefrontendnew.sh (if present)
+        shell: bash
+        run: |
+          if [ -f "Automations/updatefrontendnew.sh" ]; then
+            chmod +x Automations/updatefrontendnew.sh
+            bash Automations/updatefrontendnew.sh
+          else
+            echo "Automations/updatefrontendnew.sh not found, skipping"
+          fi
+
+  Docker_Build_Images:
+    name: "Docker: Build Images"
+    runs-on: ubuntu-latest
+    needs:
+      - Exporting_environment_variables_Backend_env_setup
+      - Exporting_environment_variables_Frontend_env_setup
+    env:
+      BACKEND_TAG: ${{ inputs.BACKEND_DOCKER_TAG }}
+      FRONTEND_TAG: ${{ inputs.FRONTEND_DOCKER_TAG }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # backend image
+      - name: Build & push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.BACKEND_CONTEXT }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.BACKEND_IMAGE_NAME }}:${{ env.BACKEND_TAG }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.BACKEND_IMAGE_NAME }}:latest
+
+      # frontend image
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.FRONTEND_CONTEXT }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ env.FRONTEND_TAG }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.FRONTEND_IMAGE_NAME }}:latest
+
+  Docker_Push_to_DockerHub:
+    name: "Docker: Confirm push"
+    runs-on: ubuntu-latest
+    needs: Docker_Build_Images
+    steps:
+      - name: Echo pushed tags
+        run: |
+          echo "Pushed:"
+          echo "${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.BACKEND_IMAGE_NAME }}:${{ inputs.BACKEND_DOCKER_TAG }}"
+          echo "${{ env.REGISTRY }}/${{ env.REGISTRY_NAMESPACE }}/${{ env.FRONTEND_IMAGE_NAME }}:${{ inputs.FRONTEND_DOCKER_TAG }}"
+
+  Post-Build:
+    if: always()
+    name: Post Build
+    runs-on: ubuntu-latest
+    needs:
+      - Validate_Parameters
+      - Workspace_cleanup
+      - Git_Code_Checkout
+      - Trivy_Filesystem_scan
+      - OWASP_Dependency_check
+      - SonarQube_Code_Analysis
+      - SonarQube_Code_Quality_Gates
+      - Exporting_environment_variables_Backend_env_setup
+      - Exporting_environment_variables_Frontend_env_setup
+      - Docker_Build_Images
+      - Docker_Push_to_DockerHub
+    steps:
+      - name: snapshot post build workflow status
+        id: post_build
+        run: echo "success=${{ contains(needs.*.result,'success') && !contains(needs.*.result,'cancelled') && !contains(needs.*.result,'failure') }}" >> $GITHUB_OUTPUT
+      - name: Upload reports when successful
+        if: steps.post_build.outputs.success == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            reports/**
+            **/*.xml
