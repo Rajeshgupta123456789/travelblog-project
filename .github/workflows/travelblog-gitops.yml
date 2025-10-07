@@ -9,6 +9,15 @@ on:
       BACKEND_DOCKER_TAG:
         required: true
         description: "Backend Docker tag (e.g., 1.0.0)"
+  workflow_call:
+    inputs:
+      FRONTEND_DOCKER_TAG: { type: string, required: true }
+      BACKEND_DOCKER_TAG:  { type: string, required: true }
+    secrets:
+      SONAR_HOST_URL:      { required: false }
+      SONAR_TOKEN:         { required: false }
+      DOCKERHUB_USERNAME:  { required: false }
+      DOCKERHUB_TOKEN:     { required: false }
 
 permissions:
   contents: write
