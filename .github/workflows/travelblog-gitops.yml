@@ -13,11 +13,6 @@ on:
     inputs:
       FRONTEND_DOCKER_TAG: { type: string, required: true }
       BACKEND_DOCKER_TAG:  { type: string, required: true }
-    secrets:
-      SONAR_HOST_URL:      { required: false }
-      SONAR_TOKEN:         { required: false }
-      DOCKERHUB_USERNAME:  { required: false }
-      DOCKERHUB_TOKEN:     { required: false }
 
 permissions:
   contents: write
