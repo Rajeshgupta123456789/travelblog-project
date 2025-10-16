@@ -1,0 +1,122 @@
+name: CI/CD Build, Scan and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-scan:
+    name: Build -> Scan -> Push -> Update Manifests
+    runs-on: ubuntu-latest
+    # image names are built from secrets when needed to avoid invalid context at parse time
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set IMAGE_TAG
+        id: set_tag
+        run: |
+          SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+          IMAGE_TAG="v${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=${IMAGE_TAG}"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up QEMU and Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-backend-beta:${{ steps.set_tag.outputs.image_tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-backend-beta:latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta:${{ steps.set_tag.outputs.image_tag }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta:latest
+
+
+      - name: Trivy scan backend image
+        env:
+          IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
+          BACK_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-backend-beta
+        run: |
+          docker run --rm --net host aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${BACK_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in backend image" && exit 1)
+
+
+      - name: Trivy scan frontend image
+        env:
+          IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
+          FRONT_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta
+        run: |
+          docker run --rm --net host aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${FRONT_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in frontend image" && exit 1)
+
+      - name: Create reports folder
+        run: mkdir -p reports/dependency-check
+
+      - name: OWASP Dependency-Check (backend)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/src owasp/dependency-check:8.3.2 --project backend --scan /src/backend --format ALL --out /src/reports/dependency-check || true
+
+      - name: OWASP Dependency-Check (frontend)
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/src owasp/dependency-check:8.3.2 --project frontend --scan /src/frontend --format ALL --out /src/reports/dependency-check || true
+
+      - name: npm audit (backend)
+        run: |
+          cd backend || exit 0
+          npm ci --ignore-scripts
+          npm audit --json > ../reports/dependency-check/backend-npm-audit.json || true
+
+      - name: npm audit (frontend)
+        run: |
+          cd frontend || exit 0
+          npm ci --ignore-scripts
+          npm audit --json > ../reports/dependency-check/frontend-npm-audit.json || true
+
+      - name: Update kubernetes manifests with new image tags
+        env:
+          IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
+          BACK_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-backend-beta
+          FRONT_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta
+        run: |
+          echo "Updating kubernetes/backend.yaml and kubernetes/frontend.yaml to tag ${IMAGE_TAG}"
+          sed -i "s|image: .*wanderlust-backend-beta:.*|image: ${BACK_IMG}:${IMAGE_TAG}|" kubernetes/backend.yaml || true
+          sed -i "s|image: .*wanderlust-frontend-beta:.*|image: ${FRONT_IMG}:${IMAGE_TAG}|" kubernetes/frontend.yaml || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add kubernetes/backend.yaml kubernetes/frontend.yaml || true
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update k8s image tags to ${IMAGE_TAG} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload vulnerability reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-scan-reports
+          path: reports
