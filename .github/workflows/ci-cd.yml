@@ -63,7 +63,7 @@ jobs:
           IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
           BACK_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-backend-beta
         run: |
-          docker run --rm --net host aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${BACK_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in backend image" && exit 1)
+          docker run --rm --net host ghcr.io/aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${BACK_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in backend image" && exit 1)
 
 
       - name: Trivy scan frontend image
@@ -71,7 +71,7 @@ jobs:
           IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
           FRONT_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta
         run: |
-          docker run --rm --net host aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${FRONT_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in frontend image" && exit 1)
+          docker run --rm --net host ghcr.io/aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${FRONT_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in frontend image" && exit 1)
 
       - name: Create reports folder
         run: mkdir -p reports/dependency-check
