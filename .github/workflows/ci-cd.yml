@@ -56,7 +56,7 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta:${{ steps.set_tag.outputs.image_tag }}
             ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta:latest
-
+        
 
       - name: Trivy scan backend image (non-blocking)
         env:
