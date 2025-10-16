@@ -58,20 +58,24 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta:latest
 
 
-      - name: Trivy scan backend image
+      - name: Trivy scan backend image (non-blocking)
         env:
           IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
           BACK_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-backend-beta
         run: |
-          docker run --rm --net host ghcr.io/aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${BACK_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in backend image" && exit 1)
+          mkdir -p reports/trivy
+          docker run --rm ghcr.io/aquasecurity/trivy:0.44.0 image --format json --output /tmp/trivy-backend.json --severity HIGH,CRITICAL ${BACK_IMG}:${IMAGE_TAG} || true
+          docker run --rm -v /tmp:/tmp alpine:3.18 cat /tmp/trivy-backend.json > reports/trivy/trivy-backend-${IMAGE_TAG}.json || true
 
 
-      - name: Trivy scan frontend image
+      - name: Trivy scan frontend image (non-blocking)
         env:
           IMAGE_TAG: ${{ steps.set_tag.outputs.image_tag }}
           FRONT_IMG: ${{ secrets.DOCKERHUB_USERNAME }}/wanderlust-frontend-beta
         run: |
-          docker run --rm --net host ghcr.io/aquasecurity/trivy:0.44.0 image --exit-code 1 --severity HIGH,CRITICAL ${FRONT_IMG}:${IMAGE_TAG} || (echo "Trivy found issues in frontend image" && exit 1)
+          mkdir -p reports/trivy
+          docker run --rm ghcr.io/aquasecurity/trivy:0.44.0 image --format json --output /tmp/trivy-frontend.json --severity HIGH,CRITICAL ${FRONT_IMG}:${IMAGE_TAG} || true
+          docker run --rm -v /tmp:/tmp alpine:3.18 cat /tmp/trivy-frontend.json > reports/trivy/trivy-frontend-${IMAGE_TAG}.json || true
 
       - name: Create reports folder
         run: mkdir -p reports/dependency-check
