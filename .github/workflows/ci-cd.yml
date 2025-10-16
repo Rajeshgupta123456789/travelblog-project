@@ -67,6 +67,12 @@ jobs:
           docker run --rm ghcr.io/aquasecurity/trivy:0.44.0 image --format json --output /tmp/trivy-backend.json --severity HIGH,CRITICAL ${BACK_IMG}:${IMAGE_TAG} || true
           docker run --rm -v /tmp:/tmp alpine:3.18 cat /tmp/trivy-backend.json > reports/trivy/trivy-backend-${IMAGE_TAG}.json || true
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
 
       - name: Trivy scan frontend image (non-blocking)
         env:
@@ -88,17 +94,31 @@ jobs:
         run: |
           docker run --rm -v ${{ github.workspace }}:/src owasp/dependency-check:8.3.2 --project frontend --scan /src/frontend --format ALL --out /src/reports/dependency-check || true
 
-      - name: npm audit (backend)
+      - name: npm install and audit (backend)
         run: |
           cd backend || exit 0
-          npm ci --ignore-scripts
-          npm audit --json > ../reports/dependency-check/backend-npm-audit.json || true
+          set -e
+          echo "Trying npm ci..."
+          if npm ci --ignore-scripts; then
+            echo "npm ci succeeded"
+          else
+            echo "npm ci failed — running npm install (will fail workflow if install fails)"
+            npm install
+          fi
+          npm audit --json > ../reports/dependency-check/backend-npm-audit.json
 
-      - name: npm audit (frontend)
+      - name: npm install and audit (frontend)
         run: |
           cd frontend || exit 0
-          npm ci --ignore-scripts
-          npm audit --json > ../reports/dependency-check/frontend-npm-audit.json || true
+          set -e
+          echo "Trying npm ci..."
+          if npm ci --ignore-scripts; then
+            echo "npm ci succeeded"
+          else
+            echo "npm ci failed — running npm install (will fail workflow if install fails)"
+            npm install
+          fi
+          npm audit --json > ../reports/dependency-check/frontend-npm-audit.json
 
       - name: Update kubernetes manifests with new image tags
         env:
