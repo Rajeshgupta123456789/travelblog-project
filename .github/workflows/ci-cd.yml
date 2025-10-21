@@ -3,6 +3,10 @@ name: CI/CD Build, Scan and Deploy
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '.github/**'
+      - 'Readme.md'
   workflow_dispatch:
 
 permissions:
